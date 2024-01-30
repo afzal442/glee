@@ -1,136 +1,205 @@
 ---
-title: Configuring Environment Variables and Configuration File
+title: Environment variables and Configuration file
 weight: 50
 ---
 
-## Environment Variables
+# Environment Variables
 
-Glee provides several environment variables that allow you to tailor your application's behavior to fit specific needs:
+Glee provides a few environment variables for you to customize the Glee application's behavior according to your specific requirements:
 
-|Variable|Purpose|Example Usage|
-|--------|-------|-------------|
-|GLEE_SERVER_NAMES|Specifies a list of servers to initialize at startup, separated by commas.|`GLEE_SERVER_NAMES=websockets,mosquitto`|
-|GLEE_SERVER_CERTS|Indicates server-specific certificate files in a `${serverName}:${pathToCertificateFile}` format, separated by commas.|`GLEE_SERVER_CERTS=mosquitto:mosquitto.org.crt`|
-|GLEE_SERVER_VARIABLES|Sets server variables in a `${serverName}:${serverVariable}:${value}` format, separated by commas.|`GLEE_SERVER_VARIABLES=websockets:namespace:public`|
+|Variable|Description|Example|
+|---|---|---|
+|GLEE_SERVER_NAMES|A comma-separated list of the servers to load on startup.|`GLEE_SERVER_NAMES=websockets,mosquitto`|
+|GLEE_SERVER_CERTS|A comma-separated list of `${serverName}:${pathToCertificateFile}`. These are the certificates to use when establishing the connection to the given server.|`GLEE_SERVER_CERTS=mosquitto:mosquitto.org.crt`|
+|GLEE_SERVER_VARIABLES|A comma-separated list of `${serverName}:${serverVariable}:${value}`. These are the values to use for each server variable.|`GLEE_SERVER_VARIABLES=websockets:namespace:public`|
 
-### Handling Multiple .env Files
-Glee supports loading variables from `.env.local` directly into `process.env`. This feature is handy for keeping secrets out of your repository during development. You can also set environment-specific defaults in `.env.development` or `.env.production`.
+### Support for multiple .env files
+Glee has support for loading variables from `.env.local` into `process.env`.
+This is useful for storing secret environment variables needed in development while keeping them out of the repository.
+However, sometimes you might want to add some defaults for the `development` or `production` environment. You can do that by creating files with the following names:
+`.env.development` or `.env.production`
 
-`.env.local` takes precedence over other `.env*` files.
+`.env.local` always overrides any other existing `.env*` file.
 
-Switch between `development` and `production` environments by setting the `NODE_ENV` variable accordingly.
+You can change the environment by setting the `NODE_ENV` variable to `development` or `production`.
 
-## Customizing Glee Settings
+## Configuring Glee
 
-While Glee comes with defaults for ease of use, you may want to customize settings for specific needs. This is where `glee.config.js` comes into play.
+Glee comes with sensible defaults so you don't have to worry about configuration. However, sometimes you may want to change the behavior or customize Glee in different ways. For that purpose, you can use the `glee.config.js` file.
 
-### The Glee Config File
+### Configuration file
 
-`glee.config.js` is a JavaScript file exporting an asynchronous function, structured as follows:
+Glee's config file is a JavaScript file that exports an async function. Something like this:
 
 ```js
 export default async function () {
-  // Configuration details go here...
+  // More stuff here...
 }
 ```
 
-This function should return an object with configurable properties:
+This function must return an object with the following shape:
 
 ```js
 export default async function () {
   return {
     glee: {},
+    kafka: {},
     websocket: {},
+    mqtt: {},
     cluster: {},
     http: {}
   }
 }
+
 ```
 
-For example, a typical `glee.config.js` might look like this:
+Here is an example of a `glee.config.js` file for reference:
 
 ```js
 export default async function () {
   return {
-    glee: { // Core Glee configurations
+    glee: { // Glee core configurations
       lifecycleDir: './lifecycle',
       functionsDir: './functions',
       asyncapiFilePath: './asyncapi.json',
-      logs: { // Adjust default logging behavior
-        incoming: 'channel-only', // Logs only the channel, not the message payload
-        outgoing: 'none', // Disables outgoing logs
+      logs: { // you can change the defualt behaviour of glee which logs everything by default.
+        incoming: 'channel-only', // only logs the channel not message payload.
+        outgoing: 'none', //log nothing.
       }
     },
     docs: {
-      enabled: true, // Toggles documentation generation
-      folder: 'docs', // Destination folder for docs
-      template: '@asyncapi/markdown-template' // Specifies the documentation template
-    },
+      enabled: true, // Enable/Disable documentation generation
+      folder: 'docs', // Folder where you want the output of your docs to reside.
+      template: '@asyncapi/markdown-template' // Type of template you want to use.
+    }
     ws: {
       server: {
-        httpServer: customServer, // Custom HTTP server
-        adapter: "native", // Defaults to 'native', can be 'socket.io' or a custom adapter
-        port: process.env.PORT, // Server port
+        httpServer: customServer, // A custom HTTP server of your own.
+        adapter: "native", // Default. Can also be 'socket.io' or a reference to a custom adapter.
+        port: process.env.PORT,
       }
     },
     cluster: {
-      adapter: "redis", // Cluster adapter, default is Redis
-      name: "cluster", // Cluster name
-      url: "redis://localhost:6379", // URL for the cluster server (Redis in this case)
+      adapter: "redis",
+      name: "cluster", // Default. Name of your cluster.
+      url: "redis://localhost:6379", // Server URL used by adapter for clustering
+    },
+    mqtt: {
+      auth: ({serverName, parsedAsyncAPI}) => {
+        if (serverName === 'mqtt') {
+          return {
+            cert: async () => fs.readFileSync('./cert')
+            clientId: '123',
+            username: 'user1'
+            password: 'pass12'
+          }
+        }
+      }
     },
     http: {
       server: {
-        httpServer: customServer, // Custom HTTP server
+        httpServer: customServer, // A custom HTTP server of your own.
         adapter: 'native', 
-        port: process.env.PORT, // Server port
+        port: process.env.PORT,
       },
+      client: {
+        auth: {
+          token: process.env.TOKEN
+        },
+        query: {
+          foo: 'bar'
+        },
+        body: {
+          foo: 'bar'
+        }
+      }
     }
   };
 }
 ```
+Inside the return statement, you can specify the following options:
 
-In the return statement, configure the following options:
+#### Glee Core Configurations
+These configurations apply to Glee itself, rather than any specific protocol.
 
-#### Core Glee Configurations
-These settings are specific to Glee itself.
-
-|Field|Default|Purpose|
+|Field|Default|Description|
 |--|--|--|
-|glee.gleeDir|`.glee`|Determines the Glee directory for compiled sources.|
-|glee.lifecycleDir|`lifecycle`|Specifies the path to [lifecycle events](./lifecycle-events.md).|
-|glee.functionsDir|`functions`|Designates the path to [functions](./functions.md).|
-|glee.asyncapiFilePath|`asyncapi.(yaml \| yml \| json)`|Path to your AsyncAPI file.|
-|glee.logs|default|Configures logging for incoming and outgoing messages.|
-|glee.logs.incoming|"all"|Options: `channel-only`, `none`.|
-|glee.logs.outgoing|"all"|Options: `channel-only`, `none`.|
+|glee.gleeDir|`.glee`|Sets the Glee directory. Your sources will be compiled here.|
+|glee.lifecycleDir|`lifecycle`|Path to the directory that stores your [lifecycle events](./lifecycle-events.md).|
+|glee.functionsDir|`functions`| Path to the directory that stores your [functions](./functions.md).|
+|glee.asyncapiFilePath|`asyncapi.(yaml \| yml \| json)`| Path to your AsyncAPI file.|
+|glee.logs| default | glee logs channel and payload by default. you can change this behaviour for incoming and outgoing messages.|
+|glee.logs.incoming| "all" | Supported values are `channel-only` and `none`.|
+|glee.logs.outgoing| "all" | Supported values are `channel-only` and `none`.|
 
-#### Documentation Configuration
-|Field|Purpose|
+#### Generating Documentation
+|Field|Description|
 |--|--|
-|docs.enabled|Enables or disables documentation generation.|
-|docs.folder|Specifies the output directory for documentation.|
-|docs.template|Determines the AsyncAPI template for docs generation.|
-
-#### WebSocket Server Configuration
-|Field|Purpose|
+|docs.enabled|This flag enables/disables the docs generation functionality.
+|docs.folder|The dedicated folder you want your generated docs to reside.
+|docs.template|The AsyncAPI template you wanna use for generating your documentation.
+#### Websocket Server
+|Field|Description|
 |--|--|
-|ws.server|WebSocket server-specific settings.|
-|ws.server.adapter|Selects the WebSocket server adapter: `native`, `socket.io`, or a custom one.|
-|ws.server.httpServer|A custom HTTP server instance.|
-|ws.server.port
-
-|The port for the WebSocket server.|
-
-#### Cluster Configuration
-|Field|Purpose|
+|ws.server|Websocket server-specific configurations|
+|ws.server.adapter| The Glee adapter to use for the WebSocket server. Defaults to a "native" WebSocket implementation. Other allowed values are `socket.io` (to use the [Socket.IO](https://socket.io/) Glee adapter) or a reference to a custom adapter.|
+|ws.server.httpServer|  A custom HTTP server of your own. E.g., an [Express](https://expressjs.com/en/4x/api.html) server or any object that implements the [http.Server](https://nodejs.org/api/http.html#http_class_http_server) interface.   |
+|ws.server.port| The port to use when binding the WebSocket server. This is useful when your server is behind a proxy and the port exposed for consumption is not the same as the port your application should be bound to. Defaults to the port specified in the selected AsyncAPI server.|
+#### Cluster
+|Field|Description|
 |--|--|
-|cluster.adapter|Chooses the cluster communication adapter (default: Redis Pub/Sub).|
-|cluster.name|The cluster's name.|
-|cluster.url|URL of the server used by the cluster adapter.|
-
-#### HTTP Server Configuration
-|Field|Purpose|
+|cluster.adapter| The Glee cluster adapter to use for communication between instances. Defaults to Redis Pub/Sub ("redis"). Can be a reference to a custom adapter.|
+|cluster.name|The name of the cluster. Defaults to "cluster".|
+|cluster.url|The url of the server to be used by the adapter. In case of "redis" adapter, it's the url of the Redis server.|
+#### MQTT
+|Field|Description|
+|---|---|
+|mqtt.auth| MQTT authentication configuration|
+|mqtt.auth.cert| Client certificate
+|mqtt.auth.clientId| MQTT client Id for authentication
+|mqtt.auth.username| username parameter
+|mqtt.auth.password| password parameter
+#### Kafka
+|Field|Description|
+|---|---|
+|kafka.auth| Kafka authentication configuration|
+|kafka.auth.key | Kafka Broker Key
+|kafka.auth.cert| Client certificate
+|kafka.auth.clientId| Kafka client Id for authentication
+|kafka.auth.rejectUnauthorized | Boolean flag for accepting the valid SSL certificates
+|kafka.auth.username| The username to use during authentication.
+|kafka.auth.password| The password to use during authentication.
+#### HTTP Server
+|Field|Description|
 |--|--|
-|http.server|HTTP server-specific settings.|
-|http.server.adapter|Selects the HTTP server adapter.|
-|http.server.port|The port for the HTTP server.|
+|http.server|HTTP server-specific configurations|
+|http.client|HTTP client-specific configurations|
+|http.server.adapter| The Glee adapter to use for the HTTP server. Defaults to a "native" HTTP implementation.|
+|websocket.server.port| The port to use when binding the HTTP server. This is useful when your server is behind a proxy and the port exposed for consumption is not the same as the port your application should be bound to. Defaults to the port specified in the selected AsyncAPI server.|
+|http.client.auth| Authentication/Authorization configuration for the client|
+|http.client.auth.token| HTTP Authentication header|
+|http.client.query| Query object for the client to send|
+|http.client.body| Body object for the client to send
+#### Auth Config
+Most clients like `ws`,`kafka`, and `mqtt` have auth fields that are used for passing auth parameters. All these configurations can be an object or a function that returns the specific object defined by each protocol.
+
+```js
+export default async function() {
+  ws: {
+    client: {
+      auth: {
+        token: process.env.TOKEN
+      }
+    }
+  },
+  mqtt: {
+    auth: ({serverName, parsedAsyncAPI}) => {
+      if (serverName === 'mqtt') {
+        return {
+          cert: fs.readFileSync('./cert', 'utf-8')
+        }
+      }
+    }
+  }
+}
+```
